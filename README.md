@@ -4,9 +4,10 @@ A simple (Linux-only) command line wrapper for `dd`, it will only list
 disks that are:
 
 A) Not mounted
+
 B) Removable
 
-```bash
+```text
 $ fla.sh ~/Downloads/memtest86-usb.img
 Select a disk
 1) /dev/sda: My Cool Label Intenso Speed Line
