@@ -63,16 +63,12 @@ show-devs() {
     done
 }
 
-select-dev() {
-    awk -vFS=': ' '{print $1}'
-}
-
 echo -e "${c_brgb}Select a ${c_g}disk${c_none}"
-if command -v fzff &>/dev/null; then
-    tgt=$(show-devs | fzf --height=${#devs[@]} | select-dev)
+if command -v fzf &>/dev/null; then
+    tgt=$(show-devs | fzf --height=${#devs[@]} | awk -vFS=': ' '{print $1}')
 else
     show-devs | readarray -t opts
-    select opt in "${opts[@]}"; do
+    select _ in "${opts[@]}"; do
         if [[ 1 -le "$REPLY" && "$REPLY" -le "${#opts[@]}" ]]; then
             ((REPLY--))
             tgt="/dev/${devs[$REPLY]}"
