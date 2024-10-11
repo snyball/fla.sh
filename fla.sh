@@ -9,10 +9,14 @@ c_brgb='\033[1;37m'
 set -eo pipefail
 shopt -s lastpipe
 
+die() {
+    echo -e "${c_br}Error${c_brgb}:${c_none} ${1}${c_none}" >&2
+    exit 1
+}
+
 for p in jq lsblk; do
     if ! command -v "$p" &>/dev/null; then
-        echo "Error: missing dependency \`$p'"
-        exit 1
+        die "missing dependency \`$p'"
     fi
 done
 
@@ -24,20 +28,17 @@ fi
 
 img="$1"
 
-if [[ ! -f "$img" ]]; then
-    echo -e "${c_br}Error${c_brgb}: Cannot read image from ${img}${c_none}"
-    exit 1
-fi
+[[ -f "$img" ]] || die "Cannot read image from ${img}"
+
 
 devices() {
     lsblk --fs --json \
     | jq -c '.blockdevices[]' \
     | while read -r dev; do
-        echo "$dev" | jq -ec '.. | select(.mountpoints?[0])' &>/dev/null || echo "$dev" | jq -r '.name'
-    done \
-    | while read -r dev; do
-        [[ "$(cat "/sys/block/$dev/removable")" = 1 ]] || continue
-        echo "$dev"
+        echo "$dev" | jq -ec '.. | select(.mountpoints?[0])' &>/dev/null && continue
+        local name=$(echo "$dev" | jq -r '.name')
+        [[ "$(cat "/sys/block/$name/removable")" = 1 ]] || continue
+        echo "$name"
     done
 }
 
@@ -48,6 +49,7 @@ label-of() {
 }
 
 devices | readarray -t devs
+[[ ${#devs[@]} -gt 0 ]] || die "Found no candidate disks, insert removable USB drive"
 vendors=()
 models=()
 labels=()
@@ -69,31 +71,33 @@ if command -v fzf &>/dev/null; then
 else
     show-devs | readarray -t opts
     select _ in "${opts[@]}"; do
-        if [[ 1 -le "$REPLY" && "$REPLY" -le "${#opts[@]}" ]]; then
+        if [[ 1 -le "$REPLY" && "$REPLY" -le ${#opts[@]} ]]; then
             ((REPLY--))
             tgt="/dev/${devs[$REPLY]}"
             break
         else
-            echo "Error: No such option"
+            echo "Error: No such option" >&2
         fi
     done
 fi
 
+tgt_id="$tgt"
 for by_id in /dev/disk/by-id/*; do
     if [[ $tgt = "$(realpath "$by_id")" ]]; then
-        tgt=$by_id
+        tgt_id=$by_id
         break
     fi
 done
 
 cmd=(sudo dd if="$img" of="$tgt" bs=4096 status=progress)
 echo -ne "$c_br"
-echo -e "${c_brgb}Are you sure you want to ${c_br}ERASE ALL DATA${c_brgb} on ${c_g}$(basename "$tgt")${c_brgb}?${c_none}"
+echo -e "${c_brgb}Are you sure you want to ${c_br}ERASE ALL DATA${c_brgb} on ${c_g}$(basename "$tgt_id")${c_brgb}?${c_none}"
+lsblk --fs "$tgt"
 echo -e "${c_none}I ${c_urgb}will${c_none} execute the following command:${c_none}"
-echo -e \$ "${cmd[*]}"
+echo -e \$ "${cmd[@]}"
 echo -n "yes/N?) "
 read -r ans
-[[ "$ans" == "yes" ]] || exit 0
+[[ $ans = yes ]] || exit 0
 "${cmd[@]}"
 echo "Waiting for sync ..."
 sync
